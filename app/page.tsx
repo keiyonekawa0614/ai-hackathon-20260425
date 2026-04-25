@@ -28,7 +28,6 @@ import {
   AlertCircle,
   ExternalLink,
   Shield,
-  FileCheck,
 } from "lucide-react"
 import { YouTubeVideoInfo, AnalysisResult } from "@/lib/types"
 
@@ -429,47 +428,6 @@ function ResultSection({
                   </RadarChart>
                 </ResponsiveContainer>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* ファクトチェック結果 */}
-          <Card className="bg-card border-border/50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg font-medium text-foreground flex items-center gap-2">
-                <FileCheck className="w-5 h-5 text-primary" />
-                ファクトチェック
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {analysis.factCheck.summary}
-              </p>
-              {analysis.factCheck.verifiedClaims.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-emerald-400 mb-2">確認済みの主張:</p>
-                  <ul className="space-y-1">
-                    {analysis.factCheck.verifiedClaims.map((claim, i) => (
-                      <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-400 mt-0.5 shrink-0" />
-                        {claim}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {analysis.factCheck.concerns.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-amber-400 mb-2">懸念点:</p>
-                  <ul className="space-y-1">
-                    {analysis.factCheck.concerns.map((concern, i) => (
-                      <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
-                        <AlertCircle className="w-3 h-3 text-amber-400 mt-0.5 shrink-0" />
-                        {concern}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </CardContent>
           </Card>
 
