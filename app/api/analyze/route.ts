@@ -1,8 +1,21 @@
-import { generateText, Output } from 'ai'
+import { generateText } from 'ai'
 import { google } from '@ai-sdk/google'
-import { z } from 'zod'
 
 const geminiModel = google('gemini-2.0-flash')
+
+function parseJsonFromText(text: string): Record<string, unknown> | null {
+  try {
+    // JSONブロックを抽出
+    const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      const jsonStr = jsonMatch[1] || jsonMatch[0]
+      return JSON.parse(jsonStr)
+    }
+    return null
+  } catch {
+    return null
+  }
+}
 
 export async function POST(req: Request) {
   try {
@@ -17,15 +30,6 @@ export async function POST(req: Request) {
     // 3-4. ファクトチェック分析（Gemini）- 検索なしで動画情報のみから分析
     const factCheckAnalysis = await generateText({
       model: geminiModel,
-      output: Output.object({
-        schema: z.object({
-          accuracy: z.number().min(0).max(100).describe('情報の正確性スコア（0-100）'),
-          evidenceQuality: z.number().min(0).max(100).describe('根拠の明示度スコア（0-100）'),
-          summary: z.string().describe('ファクトチェック結果の要約（100-200字）'),
-          concerns: z.array(z.string()).describe('懸念点のリスト'),
-          verifiedClaims: z.array(z.string()).describe('確認できた主張のリスト'),
-        }),
-      }),
       prompt: `以下のYouTube動画の内容を分析し、ファクトチェックレポートを作成してください。
 
 【動画情報】
@@ -39,23 +43,22 @@ export async function POST(req: Request) {
 - 誤解を招く表現がないか
 - 情報源が明示されているか
 
-客観的に評価し、スコアを付けてください。`,
+以下のJSON形式で回答してください（必ずこの形式で出力）：
+\`\`\`json
+{
+  "accuracy": 0-100の数値,
+  "evidenceQuality": 0-100の数値,
+  "summary": "ファクトチェック結果の要約（100-200字）",
+  "concerns": ["懸念点1", "懸念点2"],
+  "verifiedClaims": ["確認できた主張1", "確認できた主張2"]
+}
+\`\`\``,
       maxOutputTokens: 1000,
     })
 
     // 3-5. チャンネル評判分析（Gemini）- 動画情報から推測
     const reputationAnalysis = await generateText({
       model: geminiModel,
-      output: Output.object({
-        schema: z.object({
-          trustworthiness: z.number().min(0).max(100).describe('信頼性スコア（0-100）'),
-          transparency: z.number().min(0).max(100).describe('透明性スコア（0-100）'),
-          socialValue: z.number().min(0).max(100).describe('社会的価値スコア（0-100）'),
-          summary: z.string().describe('チャンネル評判の要約（100-200字）'),
-          positivePoints: z.array(z.string()).describe('良い点のリスト'),
-          negativePoints: z.array(z.string()).describe('懸念点のリスト'),
-        }),
-      }),
       prompt: `以下のYouTube動画の情報から、チャンネルの信頼性を分析してください。
 
 【チャンネル情報】
@@ -71,26 +74,39 @@ export async function POST(req: Request) {
 - 視聴者への配慮
 - コンテンツの社会的価値
 
-情報が限られているため、動画の内容から推測できる範囲で評価してください。`,
+以下のJSON形式で回答してください（必ずこの形式で出力）：
+\`\`\`json
+{
+  "trustworthiness": 0-100の数値,
+  "transparency": 0-100の数値,
+  "socialValue": 0-100の数値,
+  "summary": "チャンネル評判の要約（100-200字）",
+  "positivePoints": ["良い点1", "良い点2"],
+  "negativePoints": ["懸念点1", "懸念点2"]
+}
+\`\`\``,
       maxOutputTokens: 1000,
     })
 
-    // 結果を統合
-    const factCheck = factCheckAnalysis.output || {
-      accuracy: 50,
-      evidenceQuality: 50,
-      summary: '分析に失敗しました',
-      concerns: [],
-      verifiedClaims: [],
+    // 結果をパース
+    const factCheckParsed = parseJsonFromText(factCheckAnalysis.text)
+    const reputationParsed = parseJsonFromText(reputationAnalysis.text)
+
+    const factCheck = {
+      accuracy: Number(factCheckParsed?.accuracy) || 50,
+      evidenceQuality: Number(factCheckParsed?.evidenceQuality) || 50,
+      summary: String(factCheckParsed?.summary || '分析に失敗しました'),
+      concerns: Array.isArray(factCheckParsed?.concerns) ? factCheckParsed.concerns as string[] : [],
+      verifiedClaims: Array.isArray(factCheckParsed?.verifiedClaims) ? factCheckParsed.verifiedClaims as string[] : [],
     }
 
-    const reputation = reputationAnalysis.output || {
-      trustworthiness: 50,
-      transparency: 50,
-      socialValue: 50,
-      summary: '分析に失敗しました',
-      positivePoints: [],
-      negativePoints: [],
+    const reputation = {
+      trustworthiness: Number(reputationParsed?.trustworthiness) || 50,
+      transparency: Number(reputationParsed?.transparency) || 50,
+      socialValue: Number(reputationParsed?.socialValue) || 50,
+      summary: String(reputationParsed?.summary || '分析に失敗しました'),
+      positivePoints: Array.isArray(reputationParsed?.positivePoints) ? reputationParsed.positivePoints as string[] : [],
+      negativePoints: Array.isArray(reputationParsed?.negativePoints) ? reputationParsed.negativePoints as string[] : [],
     }
 
     // 総合スコアを計算
