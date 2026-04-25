@@ -26,3 +26,43 @@ export interface YouTubeComment {
   likeCount: number
   publishedAt: string
 }
+
+export interface SearchResult {
+  title: string
+  snippet: string
+  link: string
+}
+
+export interface FactCheckResult {
+  accuracy: number
+  evidenceQuality: number
+  summary: string
+  concerns: string[]
+  verifiedClaims: string[]
+  searchQueries: string[]
+  searchResults: SearchResult[]
+}
+
+export interface ReputationResult {
+  trustworthiness: number
+  transparency: number
+  socialValue: number
+  summary: string
+  positivePoints: string[]
+  negativePoints: string[]
+  searchQueries: string[]
+  searchResults: SearchResult[]
+}
+
+export interface AnalysisResult {
+  overallScore: number
+  factCheck: FactCheckResult
+  reputation: ReputationResult
+  scores: {
+    accuracy: number
+    evidenceQuality: number
+    trustworthiness: number
+    transparency: number
+    socialValue: number
+  }
+}
