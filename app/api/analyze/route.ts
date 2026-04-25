@@ -1,8 +1,11 @@
 import { generateText, Output } from 'ai'
+import { google } from '@ai-sdk/google'
 import { z } from 'zod'
 
 const GOOGLE_CUSTOM_SEARCH_API_KEY = process.env.GOOGLE_CUSTOM_SEARCH_API_KEY
 const GOOGLE_CUSTOM_SEARCH_ENGINE_ID = process.env.GOOGLE_CUSTOM_SEARCH_ENGINE_ID
+
+const geminiModel = google('gemini-2.0-flash')
 
 // Google Custom Search API を使用して検索
 async function searchGoogle(query: string): Promise<{ title: string; snippet: string; link: string }[]> {
@@ -48,7 +51,7 @@ export async function POST(req: Request) {
 
     // 3-1. ファクトチェッククエリ生成（Gemini）
     const factCheckQueryResult = await generateText({
-      model: 'google/gemini-2.5-flash-preview-05-20',
+      model: geminiModel,
       prompt: `以下のYouTube動画のタイトルと説明文から、検証すべき主張や事実を抽出し、ファクトチェック用の検索クエリを3つ生成してください。
 クエリは日本語で、簡潔で検索に適した形式にしてください。
 
@@ -90,7 +93,7 @@ JSON形式で出力してください:
 
     // 3-4. ファクトチェック分析（Gemini）
     const factCheckAnalysis = await generateText({
-      model: 'google/gemini-2.5-flash-preview-05-20',
+      model: geminiModel,
       output: Output.object({
         schema: z.object({
           accuracy: z.number().min(0).max(100).describe('情報の正確性スコア（0-100）'),
@@ -115,7 +118,7 @@ ${flatFactCheckResults.map(r => `- ${r.title}: ${r.snippet}`).join('\n') || '検
 
     // 3-5. チャンネル評判分析（Gemini）
     const reputationAnalysis = await generateText({
-      model: 'google/gemini-2.5-flash-preview-05-20',
+      model: geminiModel,
       output: Output.object({
         schema: z.object({
           trustworthiness: z.number().min(0).max(100).describe('信頼性スコア（0-100）'),
