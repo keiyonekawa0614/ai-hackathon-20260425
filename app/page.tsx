@@ -26,36 +26,13 @@ import {
   Users,
   Tag,
   AlertCircle,
+  ExternalLink,
+  Shield,
+  FileCheck,
 } from "lucide-react"
-import { YouTubeVideoInfo } from "@/lib/types"
+import { YouTubeVideoInfo, AnalysisResult } from "@/lib/types"
 
-type AppState = "initial" | "loading" | "result" | "error"
-
-// 「より善い情報」チャンネルの場合の評価データ
-const goodChannelAnalysis = {
-  radarData: [
-    { axis: "情報の正確性", value: 95 },
-    { axis: "根拠の明示", value: 92 },
-    { axis: "誠実な表現", value: 88 },
-    { axis: "視聴者への配慮", value: 90 },
-    { axis: "社会的価値", value: 85 },
-  ],
-  score: 90,
-  aiComment: `このチャンネルは情報の正確性と根拠の明示において非常に高い水準を保っています。タイトルと内容の一致度も高く、視聴者を誤解させるような表現は見られません。信頼できる情報源として推奨できます。`,
-}
-
-// 一般的なチャンネルの場合の評価データ
-const normalChannelAnalysis = {
-  radarData: [
-    { axis: "情報の正確性", value: 45 },
-    { axis: "根拠の明示", value: 38 },
-    { axis: "誠実な表現", value: 42 },
-    { axis: "視聴者への配慮", value: 50 },
-    { axis: "社会的価値", value: 35 },
-  ],
-  score: 42,
-  aiComment: `この動画は一般的なエンターテイメントコンテンツです。情報の正確性や根拠の明示について改善の余地があります。視聴の際は他の情報源も参考にすることをお勧めします。`,
-}
+type AppState = "initial" | "loading-video" | "loading-analysis" | "result" | "error"
 
 function formatNumber(num: string): string {
   const n = parseInt(num, 10)
@@ -216,7 +193,18 @@ function HeroSection({
   )
 }
 
-function LoadingSection() {
+function LoadingSection({ stage }: { stage: "video" | "analysis" }) {
+  const messages = {
+    video: {
+      title: "動画情報を取得中...",
+      subtitle: "YouTube APIから情報を取得しています",
+    },
+    analysis: {
+      title: "AIが動画を分析中...",
+      subtitle: "ファクトチェックと評判調査を実行しています",
+    },
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-20">
       <div className="text-center space-y-8 animate-in fade-in duration-500">
@@ -225,12 +213,28 @@ function LoadingSection() {
         </div>
         <div className="space-y-3">
           <p className="text-xl font-light text-foreground">
-            動画情報を取得中...
+            {messages[stage].title}
           </p>
           <p className="text-sm text-muted-foreground">
-            しばらくお待ちください
+            {messages[stage].subtitle}
           </p>
         </div>
+        {stage === "analysis" && (
+          <div className="max-w-md mx-auto space-y-2 text-left">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+              <span>ファクトチェッククエリを生成</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+              <span>チャンネル評判を調査</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+              <span>信頼性レポートを生成</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -270,19 +274,26 @@ function ErrorSection({
 function ResultSection({ 
   onReset, 
   videoInfo,
-  isGoodChannel,
+  analysis,
 }: { 
   onReset: () => void
   videoInfo: YouTubeVideoInfo
-  isGoodChannel: boolean
+  analysis: AnalysisResult
 }) {
   const [animate, setAnimate] = useState(false)
-  const analysis = isGoodChannel ? goodChannelAnalysis : normalChannelAnalysis
 
   useEffect(() => {
     const timer = setTimeout(() => setAnimate(true), 100)
     return () => clearTimeout(timer)
   }, [])
+
+  const radarData = [
+    { axis: "情報の正確性", value: analysis.scores.accuracy },
+    { axis: "根拠の明示", value: analysis.scores.evidenceQuality },
+    { axis: "信頼性", value: analysis.scores.trustworthiness },
+    { axis: "透明性", value: analysis.scores.transparency },
+    { axis: "社会的価値", value: analysis.scores.socialValue },
+  ]
 
   const getRadarColor = (score: number) => {
     if (score >= 60) return "#34d399"
@@ -382,7 +393,7 @@ function ResultSection({
               </CardTitle>
             </CardHeader>
             <CardContent className="flex items-center justify-center py-8">
-              <CircularProgress score={analysis.score} animate={animate} />
+              <CircularProgress score={analysis.overallScore} animate={animate} />
             </CardContent>
           </Card>
 
@@ -396,7 +407,7 @@ function ResultSection({
             <CardContent>
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart data={analysis.radarData} cx="50%" cy="50%" outerRadius="70%">
+                  <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
                     <PolarGrid stroke="rgba(255,255,255,0.1)" />
                     <PolarAngleAxis
                       dataKey="axis"
@@ -410,8 +421,8 @@ function ResultSection({
                     <Radar
                       name="善さ"
                       dataKey="value"
-                      stroke={getRadarColor(analysis.score)}
-                      fill={getRadarColor(analysis.score)}
+                      stroke={getRadarColor(analysis.overallScore)}
+                      fill={getRadarColor(analysis.overallScore)}
                       fillOpacity={0.25}
                       strokeWidth={2}
                     />
@@ -421,20 +432,188 @@ function ResultSection({
             </CardContent>
           </Card>
 
-          {/* AIコメント */}
+          {/* ファクトチェック結果 */}
           <Card className="bg-card border-border/50">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg font-medium text-foreground flex items-center gap-2">
+                <FileCheck className="w-5 h-5 text-primary" />
+                ファクトチェック
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {analysis.factCheck.summary}
+              </p>
+              {analysis.factCheck.verifiedClaims.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-emerald-400 mb-2">確認済みの主張:</p>
+                  <ul className="space-y-1">
+                    {analysis.factCheck.verifiedClaims.map((claim, i) => (
+                      <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400 mt-0.5 shrink-0" />
+                        {claim}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {analysis.factCheck.concerns.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-amber-400 mb-2">懸念点:</p>
+                  <ul className="space-y-1">
+                    {analysis.factCheck.concerns.map((concern, i) => (
+                      <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                        <AlertCircle className="w-3 h-3 text-amber-400 mt-0.5 shrink-0" />
+                        {concern}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* チャンネル評判 */}
+          <Card className="bg-card border-border/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-medium text-foreground flex items-center gap-2">
+                <Shield className="w-5 h-5 text-primary" />
+                チャンネル評判
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {analysis.reputation.summary}
+              </p>
+              {analysis.reputation.positivePoints.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-emerald-400 mb-2">良い点:</p>
+                  <ul className="space-y-1">
+                    {analysis.reputation.positivePoints.map((point, i) => (
+                      <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400 mt-0.5 shrink-0" />
+                        {point}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {analysis.reputation.negativePoints.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-red-400 mb-2">懸念点:</p>
+                  <ul className="space-y-1">
+                    {analysis.reputation.negativePoints.map((point, i) => (
+                      <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
+                        <XCircle className="w-3 h-3 text-red-400 mt-0.5 shrink-0" />
+                        {point}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* AIコメント */}
+          <Card className="bg-card border-border/50 lg:col-span-2">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-medium text-foreground flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-primary" />
-                AIコメント
+                AI総合評価
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-base text-muted-foreground leading-relaxed">
-                {analysis.aiComment}
-              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <h4 className="text-sm font-medium text-foreground">スコア詳細</h4>
+                  <div className="space-y-3">
+                    {[
+                      { label: "情報の正確性", value: analysis.scores.accuracy },
+                      { label: "根拠の明示", value: analysis.scores.evidenceQuality },
+                      { label: "信頼性", value: analysis.scores.trustworthiness },
+                      { label: "透明性", value: analysis.scores.transparency },
+                      { label: "社会的価値", value: analysis.scores.socialValue },
+                    ].map((item) => (
+                      <div key={item.label} className="flex items-center gap-3">
+                        <span className="text-xs text-muted-foreground w-24">{item.label}</span>
+                        <div className="flex-1 bg-secondary/30 rounded-full h-2">
+                          <div
+                            className="h-full rounded-full transition-all duration-1000"
+                            style={{
+                              width: `${item.value}%`,
+                              backgroundColor: getRadarColor(item.value),
+                            }}
+                          />
+                        </div>
+                        <span className="text-xs font-medium text-foreground w-8">{item.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <h4 className="text-sm font-medium text-foreground">調査に使用したクエリ</h4>
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">ファクトチェック:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {analysis.factCheck.searchQueries.map((q, i) => (
+                        <Badge key={i} variant="outline" className="text-xs">
+                          {q}
+                        </Badge>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">評判調査:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {analysis.reputation.searchQueries.map((q, i) => (
+                        <Badge key={i} variant="outline" className="text-xs">
+                          {q}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
+
+          {/* 検索結果参照 */}
+          {(analysis.factCheck.searchResults.length > 0 || analysis.reputation.searchResults.length > 0) && (
+            <Card className="bg-card border-border/50 lg:col-span-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg font-medium text-foreground">
+                  参照した情報源
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-48">
+                  <div className="space-y-3">
+                    {[...analysis.factCheck.searchResults, ...analysis.reputation.searchResults]
+                      .slice(0, 8)
+                      .map((result, i) => (
+                        <a
+                          key={i}
+                          href={result.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block p-3 rounded-lg bg-secondary/20 hover:bg-secondary/40 transition-colors"
+                        >
+                          <div className="flex items-start gap-2">
+                            <ExternalLink className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                            <div>
+                              <p className="text-sm font-medium text-foreground line-clamp-1">
+                                {result.title}
+                              </p>
+                              <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                                {result.snippet}
+                              </p>
+                            </div>
+                          </div>
+                        </a>
+                      ))}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          )}
 
           {/* 説明欄 */}
           <Card className="bg-card border-border/50 lg:col-span-2">
@@ -500,35 +679,44 @@ export default function ZenAnalyzer() {
   const [state, setState] = useState<AppState>("initial")
   const [url, setUrl] = useState("")
   const [videoInfo, setVideoInfo] = useState<YouTubeVideoInfo | null>(null)
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null)
   const [errorMessage, setErrorMessage] = useState("")
-  const [isGoodChannel, setIsGoodChannel] = useState(false)
 
   const handleAnalyze = async () => {
-    setState("loading")
+    setState("loading-video")
     setErrorMessage("")
 
     try {
-      const response = await fetch("/api/youtube", {
+      // Step 1: YouTube APIで動画情報を取得
+      const videoResponse = await fetch("/api/youtube", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       })
 
-      const data = await response.json()
+      const videoData = await videoResponse.json()
 
-      if (!response.ok) {
-        throw new Error(data.error || "エラーが発生しました")
+      if (!videoResponse.ok) {
+        throw new Error(videoData.error || "動画情報の取得に失敗しました")
       }
 
-      setVideoInfo(data)
-      
-      // チャンネル名で「善さ」を判定（デモ用）
-      const channelName = data.channelName.toLowerCase()
-      const isGood = channelName.includes("より善い情報") || 
-                     channelName.includes("yori-yoi") ||
-                     channelName.includes("good-info")
-      setIsGoodChannel(isGood)
-      
+      setVideoInfo(videoData)
+      setState("loading-analysis")
+
+      // Step 2: AI分析を実行
+      const analysisResponse = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoInfo: videoData }),
+      })
+
+      const analysisData = await analysisResponse.json()
+
+      if (!analysisResponse.ok) {
+        throw new Error(analysisData.error || "分析に失敗しました")
+      }
+
+      setAnalysis(analysisData)
       setState("result")
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "エラーが発生しました")
@@ -540,8 +728,8 @@ export default function ZenAnalyzer() {
     setState("initial")
     setUrl("")
     setVideoInfo(null)
+    setAnalysis(null)
     setErrorMessage("")
-    setIsGoodChannel(false)
   }
 
   return (
@@ -554,13 +742,14 @@ export default function ZenAnalyzer() {
           isLoading={false}
         />
       )}
-      {state === "loading" && <LoadingSection />}
+      {state === "loading-video" && <LoadingSection stage="video" />}
+      {state === "loading-analysis" && <LoadingSection stage="analysis" />}
       {state === "error" && <ErrorSection message={errorMessage} onReset={handleReset} />}
-      {state === "result" && videoInfo && (
+      {state === "result" && videoInfo && analysis && (
         <ResultSection 
           onReset={handleReset} 
           videoInfo={videoInfo}
-          isGoodChannel={isGoodChannel}
+          analysis={analysis}
         />
       )}
     </main>
