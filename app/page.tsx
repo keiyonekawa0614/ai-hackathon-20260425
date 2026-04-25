@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Spinner } from "@/components/ui/spinner"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Radar,
   RadarChart,
@@ -23,12 +23,16 @@ import {
   Sparkles,
   CheckCircle2,
   XCircle,
+  Users,
+  Tag,
+  AlertCircle,
 } from "lucide-react"
+import { YouTubeVideoInfo } from "@/lib/types"
 
-type AppState = "initial" | "loading" | "result"
+type AppState = "initial" | "loading" | "result" | "error"
 
-// 「より善い情報」チャンネルの動画はスコアが高い
-const goodChannelData = {
+// 「より善い情報」チャンネルの場合の評価データ
+const goodChannelAnalysis = {
   radarData: [
     { axis: "情報の正確性", value: 95 },
     { axis: "根拠の明示", value: 92 },
@@ -36,39 +40,34 @@ const goodChannelData = {
     { axis: "視聴者への配慮", value: 90 },
     { axis: "社会的価値", value: 85 },
   ],
-  videoData: {
-    thumbnail: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=640&h=360&fit=crop",
-    title: "【徹底解説】初心者が知るべき投資の基本｜根拠とデータで学ぶ",
-    channel: "より善い情報",
-    publishedAt: "2024年3月10日",
-    views: "45万回",
-    likes: "2.8万",
-    comments: "890件",
-  },
   score: 90,
   aiComment: `このチャンネルは情報の正確性と根拠の明示において非常に高い水準を保っています。タイトルと内容の一致度も高く、視聴者を誤解させるような表現は見られません。信頼できる情報源として推奨できます。`,
 }
 
-// 一般的な釣り動画のデータ
-const badChannelData = {
+// 一般的なチャンネルの場合の評価データ
+const normalChannelAnalysis = {
   radarData: [
-    { axis: "情報の正確性", value: 25 },
-    { axis: "根拠の明示", value: 18 },
-    { axis: "誠実な表現", value: 22 },
-    { axis: "視聴者への配慮", value: 30 },
-    { axis: "社会的価値", value: 15 },
+    { axis: "情報の正確性", value: 45 },
+    { axis: "根拠の明示", value: 38 },
+    { axis: "誠実な表現", value: 42 },
+    { axis: "視聴者への配慮", value: 50 },
+    { axis: "社会的価値", value: 35 },
   ],
-  videoData: {
-    thumbnail: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=640&h=360&fit=crop",
-    title: "【衝撃の結末】これを知らないと人生損します...99%の人が気づいていない真実",
-    channel: "エンタメ太郎チャンネル",
-    publishedAt: "2024年3月15日",
-    views: "120万回",
-    likes: "4.5万",
-    comments: "1,200件",
-  },
-  score: 22,
-  aiComment: `サムネイルの赤い極太フォントと「衝撃の結末」というタイトルは、視聴者の不安を煽る典型的な手法です。内容に根拠となるデータや出典が示されておらず、誇張表現が目立ちます。情報の信頼性は低いと判断します。`,
+  score: 42,
+  aiComment: `この動画は一般的なエンターテイメントコンテンツです。情報の正確性や根拠の明示について改善の余地があります。視聴の際は他の情報源も参考にすることをお勧めします。`,
+}
+
+function formatNumber(num: string): string {
+  const n = parseInt(num, 10)
+  if (isNaN(n)) return num
+  if (n >= 10000) return `${(n / 10000).toFixed(1)}万`
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}千`
+  return num
+}
+
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr)
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
 }
 
 function CircularProgress({ score, animate }: { score: number; animate: boolean }) {
@@ -165,10 +164,12 @@ function HeroSection({
   url,
   setUrl,
   onAnalyze,
+  isLoading,
 }: {
   url: string
   setUrl: (url: string) => void
   onAnalyze: () => void
+  isLoading: boolean
 }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-20">
@@ -194,11 +195,12 @@ function HeroSection({
             placeholder="YouTubeのURLを入力..."
             value={url}
             onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && url && onAnalyze()}
             className="flex-1 h-14 px-6 text-base bg-card border-border rounded-xl focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all duration-300 placeholder:text-muted-foreground/50"
           />
           <Button
             onClick={onAnalyze}
-            disabled={!url}
+            disabled={!url || isLoading}
             className="h-14 px-8 text-base font-medium bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl transition-all duration-300 disabled:opacity-40"
           >
             <Search className="w-5 h-5 mr-2" />
@@ -207,7 +209,7 @@ function HeroSection({
         </div>
 
         <p className="text-xs text-muted-foreground/60 pt-4">
-          「より善い情報」チャンネルのURLを入力すると高スコアが表示されます
+          YouTubeの動画URLを入力して分析を開始してください
         </p>
       </div>
     </div>
@@ -223,7 +225,7 @@ function LoadingSection() {
         </div>
         <div className="space-y-3">
           <p className="text-xl font-light text-foreground">
-            AIが動画の「善さ」を分析中...
+            動画情報を取得中...
           </p>
           <p className="text-sm text-muted-foreground">
             しばらくお待ちください
@@ -234,15 +236,48 @@ function LoadingSection() {
   )
 }
 
+function ErrorSection({ 
+  message, 
+  onReset 
+}: { 
+  message: string
+  onReset: () => void 
+}) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-20">
+      <div className="text-center space-y-8 animate-in fade-in duration-500">
+        <AlertCircle className="w-16 h-16 text-red-400 mx-auto" />
+        <div className="space-y-3">
+          <p className="text-xl font-light text-foreground">
+            エラーが発生しました
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {message}
+          </p>
+        </div>
+        <Button
+          onClick={onReset}
+          variant="outline"
+          className="rounded-xl"
+        >
+          戻る
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function ResultSection({ 
   onReset, 
-  isGoodChannel 
+  videoInfo,
+  isGoodChannel,
 }: { 
   onReset: () => void
-  isGoodChannel: boolean 
+  videoInfo: YouTubeVideoInfo
+  isGoodChannel: boolean
 }) {
   const [animate, setAnimate] = useState(false)
-  const data = isGoodChannel ? goodChannelData : badChannelData
+  const analysis = isGoodChannel ? goodChannelAnalysis : normalChannelAnalysis
 
   useEffect(() => {
     const timer = setTimeout(() => setAnimate(true), 100)
@@ -254,6 +289,11 @@ function ResultSection({
     if (score >= 40) return "#fbbf24"
     return "#f87171"
   }
+
+  const thumbnail = videoInfo.thumbnails.maxres?.url || 
+                    videoInfo.thumbnails.high?.url || 
+                    videoInfo.thumbnails.medium?.url ||
+                    videoInfo.thumbnails.default?.url
 
   return (
     <div className="min-h-screen px-4 sm:px-6 py-12 md:py-20 animate-in fade-in duration-700">
@@ -272,44 +312,69 @@ function ResultSection({
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* 動画情報カード */}
           <Card className="bg-card border-border/50 overflow-hidden">
             <CardContent className="p-0">
               <div className="aspect-video relative">
-                <img
-                  src={data.videoData.thumbnail}
-                  alt="Video thumbnail"
-                  className="w-full h-full object-cover"
-                />
+                {thumbnail && (
+                  <img
+                    src={thumbnail}
+                    alt="Video thumbnail"
+                    className="w-full h-full object-cover"
+                  />
+                )}
               </div>
               <div className="p-6 space-y-4">
-                <h3 className="text-lg font-medium text-foreground leading-relaxed">
-                  {data.videoData.title}
+                <h3 className="text-lg font-medium text-foreground leading-relaxed line-clamp-2">
+                  {videoInfo.title}
                 </h3>
-                <p className="text-sm text-muted-foreground">
-                  {data.videoData.channel}
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-muted-foreground">
+                    {videoInfo.channelName}
+                  </p>
+                  <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-xs bg-secondary/50">
+                    <Users className="w-3 h-3 mr-1" />
+                    {formatNumber(videoInfo.subscriberCount)}人
+                  </Badge>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs bg-secondary/50">
                     <Calendar className="w-3 h-3 mr-1" />
-                    {data.videoData.publishedAt}
+                    {formatDate(videoInfo.publishedAt)}
                   </Badge>
                   <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs bg-secondary/50">
                     <Play className="w-3 h-3 mr-1" />
-                    {data.videoData.views}
+                    {formatNumber(videoInfo.viewCount)}回
                   </Badge>
                   <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs bg-secondary/50">
                     <ThumbsUp className="w-3 h-3 mr-1" />
-                    {data.videoData.likes}
+                    {formatNumber(videoInfo.likeCount)}
                   </Badge>
                   <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs bg-secondary/50">
                     <MessageCircle className="w-3 h-3 mr-1" />
-                    {data.videoData.comments}
+                    {formatNumber(videoInfo.commentCount)}件
                   </Badge>
                 </div>
+                {videoInfo.tags && videoInfo.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-2">
+                    <Tag className="w-3 h-3 text-muted-foreground" />
+                    {videoInfo.tags.slice(0, 5).map((tag, i) => (
+                      <Badge key={i} variant="outline" className="rounded-full px-2 py-0.5 text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                    {videoInfo.tags.length > 5 && (
+                      <span className="text-xs text-muted-foreground">
+                        +{videoInfo.tags.length - 5}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
 
+          {/* 善さスコア */}
           <Card className="bg-card border-border/50">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg font-medium text-foreground">
@@ -317,10 +382,11 @@ function ResultSection({
               </CardTitle>
             </CardHeader>
             <CardContent className="flex items-center justify-center py-8">
-              <CircularProgress score={data.score} animate={animate} />
+              <CircularProgress score={analysis.score} animate={animate} />
             </CardContent>
           </Card>
 
+          {/* 5軸分析 */}
           <Card className="bg-card border-border/50">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg font-medium text-foreground">
@@ -330,7 +396,7 @@ function ResultSection({
             <CardContent>
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart data={data.radarData} cx="50%" cy="50%" outerRadius="70%">
+                  <RadarChart data={analysis.radarData} cx="50%" cy="50%" outerRadius="70%">
                     <PolarGrid stroke="rgba(255,255,255,0.1)" />
                     <PolarAngleAxis
                       dataKey="axis"
@@ -344,8 +410,8 @@ function ResultSection({
                     <Radar
                       name="善さ"
                       dataKey="value"
-                      stroke={getRadarColor(data.score)}
-                      fill={getRadarColor(data.score)}
+                      stroke={getRadarColor(analysis.score)}
+                      fill={getRadarColor(analysis.score)}
                       fillOpacity={0.25}
                       strokeWidth={2}
                     />
@@ -355,6 +421,7 @@ function ResultSection({
             </CardContent>
           </Card>
 
+          {/* AIコメント */}
           <Card className="bg-card border-border/50">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg font-medium text-foreground flex items-center gap-2">
@@ -364,10 +431,65 @@ function ResultSection({
             </CardHeader>
             <CardContent>
               <p className="text-base text-muted-foreground leading-relaxed">
-                {data.aiComment}
+                {analysis.aiComment}
               </p>
             </CardContent>
           </Card>
+
+          {/* 説明欄 */}
+          <Card className="bg-card border-border/50 lg:col-span-2">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-medium text-foreground">
+                動画の説明
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-40">
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                  {videoInfo.description || "説明がありません"}
+                </p>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+
+          {/* コメント */}
+          {videoInfo.comments && videoInfo.comments.length > 0 && (
+            <Card className="bg-card border-border/50 lg:col-span-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg font-medium text-foreground">
+                  上位コメント
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-64">
+                  <div className="space-y-4">
+                    {videoInfo.comments.map((comment, i) => (
+                      <div key={i} className="border-b border-border/30 pb-4 last:border-0">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-medium text-foreground">
+                            {comment.author}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatDate(comment.publishedAt)}
+                          </span>
+                          {comment.likeCount > 0 && (
+                            <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-xs bg-secondary/50">
+                              <ThumbsUp className="w-2.5 h-2.5 mr-1" />
+                              {comment.likeCount}
+                            </Badge>
+                          )}
+                        </div>
+                        <p 
+                          className="text-sm text-muted-foreground leading-relaxed"
+                          dangerouslySetInnerHTML={{ __html: comment.text }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>
@@ -377,34 +499,70 @@ function ResultSection({
 export default function ZenAnalyzer() {
   const [state, setState] = useState<AppState>("initial")
   const [url, setUrl] = useState("")
+  const [videoInfo, setVideoInfo] = useState<YouTubeVideoInfo | null>(null)
+  const [errorMessage, setErrorMessage] = useState("")
   const [isGoodChannel, setIsGoodChannel] = useState(false)
 
-  const handleAnalyze = () => {
-    // 「より善い情報」チャンネルかどうかを判定
-    const isGood = url.toLowerCase().includes("より善い情報") || 
-                   url.toLowerCase().includes("yori-yoi") ||
-                   url.toLowerCase().includes("good-info")
-    setIsGoodChannel(isGood)
-    
+  const handleAnalyze = async () => {
     setState("loading")
-    setTimeout(() => {
+    setErrorMessage("")
+
+    try {
+      const response = await fetch("/api/youtube", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "エラーが発生しました")
+      }
+
+      setVideoInfo(data)
+      
+      // チャンネル名で「善さ」を判定（デモ用）
+      const channelName = data.channelName.toLowerCase()
+      const isGood = channelName.includes("より善い情報") || 
+                     channelName.includes("yori-yoi") ||
+                     channelName.includes("good-info")
+      setIsGoodChannel(isGood)
+      
       setState("result")
-    }, 2500)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "エラーが発生しました")
+      setState("error")
+    }
   }
 
   const handleReset = () => {
     setState("initial")
     setUrl("")
+    setVideoInfo(null)
+    setErrorMessage("")
     setIsGoodChannel(false)
   }
 
   return (
     <main className="min-h-screen bg-background">
       {state === "initial" && (
-        <HeroSection url={url} setUrl={setUrl} onAnalyze={handleAnalyze} />
+        <HeroSection 
+          url={url} 
+          setUrl={setUrl} 
+          onAnalyze={handleAnalyze}
+          isLoading={false}
+        />
       )}
       {state === "loading" && <LoadingSection />}
-      {state === "result" && <ResultSection onReset={handleReset} isGoodChannel={isGoodChannel} />}
+      {state === "error" && <ErrorSection message={errorMessage} onReset={handleReset} />}
+      {state === "result" && videoInfo && (
+        <ResultSection 
+          onReset={handleReset} 
+          videoInfo={videoInfo}
+          isGoodChannel={isGoodChannel}
+        />
+      )}
     </main>
   )
 }
