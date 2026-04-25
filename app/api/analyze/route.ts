@@ -9,8 +9,13 @@ const geminiModel = google('gemini-2.0-flash')
 
 // Google Custom Search API を使用して検索
 async function searchGoogle(query: string): Promise<{ title: string; snippet: string; link: string }[]> {
+  console.log('[v0] Search API Key exists:', !!GOOGLE_CUSTOM_SEARCH_API_KEY)
+  console.log('[v0] Search Engine ID exists:', !!GOOGLE_CUSTOM_SEARCH_ENGINE_ID)
+  console.log('[v0] API Key prefix:', GOOGLE_CUSTOM_SEARCH_API_KEY?.slice(0, 8))
+  console.log('[v0] Engine ID:', GOOGLE_CUSTOM_SEARCH_ENGINE_ID)
+  
   if (!GOOGLE_CUSTOM_SEARCH_API_KEY || !GOOGLE_CUSTOM_SEARCH_ENGINE_ID) {
-    console.error('Google Custom Search API credentials not configured')
+    console.error('[v0] Google Custom Search API credentials not configured')
     return []
   }
 
@@ -21,9 +26,11 @@ async function searchGoogle(query: string): Promise<{ title: string; snippet: st
     url.searchParams.set('q', query)
     url.searchParams.set('num', '5')
 
+    console.log('[v0] Searching for:', query)
     const response = await fetch(url.toString())
     if (!response.ok) {
-      console.error('Google Search API error:', response.status)
+      const errorBody = await response.text()
+      console.error('[v0] Google Search API error:', response.status, errorBody)
       return []
     }
 
