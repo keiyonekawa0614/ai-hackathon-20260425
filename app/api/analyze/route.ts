@@ -23,7 +23,8 @@ async function searchGoogle(query: string): Promise<{ title: string; snippet: st
 
     const response = await fetch(url.toString())
     if (!response.ok) {
-      console.error('Google Search API error:', response.status)
+      const errorBody = await response.text()
+      console.error('[v0] Google Search API error:', response.status, errorBody)
       return []
     }
 
